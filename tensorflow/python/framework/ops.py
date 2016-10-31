@@ -2780,6 +2780,18 @@ class Graph(object):
     with self._lock:
       return [x for x in self._collections if isinstance(x, six.string_types)]
 
+  def clear_collection(self, name):
+    """Clears all values in a collection.
+
+    Args:
+      name: The key for the collection. The `GraphKeys` class contains many
+        standard names for collections.
+    """
+    self._check_not_finalized()
+    with self._lock:
+      if name in self._collections:
+        del self._collections[name]
+
   @contextlib.contextmanager
   def _original_op(self, op):
     """Python 'with' handler to help annotate ops with their originator.
@@ -4053,6 +4065,7 @@ class GraphKeys(object):
   READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
+  TRAIN_OP = "train_op"
 
   # Key for control flow context.
   COND_CONTEXT = "cond_context"

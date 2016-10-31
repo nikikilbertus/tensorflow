@@ -1509,7 +1509,6 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
-    tags = ["notsan"],
 )
 
 cuda_py_test(
@@ -1585,7 +1584,6 @@ cuda_py_test(
         ":lib",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["notsan"],
 )
 
 py_library(
@@ -1861,6 +1859,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + tf_additional_lib_deps(),
 )
@@ -1930,7 +1929,6 @@ py_library(
 # Just used by tests.
 tf_cuda_library(
     name = "construction_fails_op",
-    testonly = 1,
     srcs = ["client/test_construction_fails_op.cc"],
     deps = [
         "//tensorflow/core",
@@ -2130,7 +2128,6 @@ py_tests(
         "summary/event_multiplexer_test.py",
         "summary/impl/directory_watcher_test.py",
         "summary/impl/event_file_loader_test.py",
-        "summary/impl/gcs_file_loader_test.py",
         "summary/impl/reservoir_test.py",
         "summary/summary_test.py",
         "summary/writer/writer_test.py",
