@@ -79,6 +79,7 @@ or join multiple tensors together.
 @@dequantize
 @@quantize_v2
 @@quantized_concat
+@@setdiff1d
 
 """
 from __future__ import absolute_import
@@ -92,6 +93,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
@@ -114,6 +116,24 @@ _baseslice = slice
 
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
+
+
+def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
+  """Returns the difference between the `x` and `y` treated as sets.
+
+  Args:
+    x: Set of values not assumed to be unique.
+    y: Set of values not assumed to be unique.
+    index_dtype: Output index type (`tf.int32`, `tf.int64`) default: `tf.int32`
+    name: A name for the operation (optional).
+
+
+  Returns:
+    A `Tensor` the same type as `x` and `y`
+    A `Tensor` that is of type `index_dtype` representing indices from .
+  """
+
+  return gen_array_ops.list_diff(x, y, index_dtype, name)
 
 
 def shape(input, name=None, out_type=dtypes.int32):
@@ -157,7 +177,8 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
 
   """
   with ops.name_scope(name, "Shape", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_math_ops.cast(input.shape, out_type)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -208,7 +229,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
     A `Tensor` of type `out_type`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_math_ops._prod(
           gen_math_ops.cast(input.shape, out_type), 0, name=name)
     else:
@@ -260,7 +282,8 @@ def rank_internal(input, name=None, optimize=True):
     A `Tensor` of type `int32`.
   """
   with ops.name_scope(name, "Rank", [input]) as name:
-    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
+    if isinstance(
+        input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_array_ops.size(input.shape, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -1426,6 +1449,17 @@ def placeholder(dtype, shape=None, name=None):
   return ret
 
 
+# pylint: disable=redefined-outer-name
+def _normalize_sparse_shape(shape, name):
+  """Takes numpy array or Tensor or None and returns either None or Tensor."""
+  if shape is None: return None
+  if not isinstance(shape, ops.Tensor):
+    for el in shape:
+      if el is None:
+        return None
+  return ops.convert_to_tensor(shape, name=name)
+
+
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
 
@@ -1465,14 +1499,11 @@ def sparse_placeholder(dtype, shape=None, name=None):
     A `SparseTensor` that may be used as a handle for feeding a value, but not
     evaluated directly.
   """
+  shape_name = (name + "/shape") if name is not None else None
+  shape = _normalize_sparse_shape(shape, shape_name)
   if shape is None:
-    shape = placeholder(
-        dtypes.int64, shape=[None],
-        name=(name + "/shape") if name is not None else None)
-  else:
-    shape = ops.convert_to_tensor(
-        shape, name=(name + "/shape") if name is not None else None)
-  return ops.SparseTensor(
+    shape = placeholder(dtypes.int64, shape=[None], name=shape_name)
+  return sparse_tensor.SparseTensor(
       values=placeholder(
           dtype, shape=[None],
           name=(name + "/values") if name is not None else None),
@@ -1481,6 +1512,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
           name=(name + "/indices") if name is not None else None),
       shape=shape
   )
+# pylint: enable=redefined-outer-name
 
 
 def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invalid-name
@@ -1525,7 +1557,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
   Args:
     tensor: A `Tensor`.
     paddings: A `Tensor` of type `int32`.
-    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC".
+    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
     name: A name for the operation (optional).
 
   Returns:
@@ -1535,6 +1567,9 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
     ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
   """
 
+  # Convert lower/mixed case to upper for NumPy compatibility
+  # NumPy uses all lower-case modes.
+  mode = mode.upper()
   if mode == "CONSTANT":
     return gen_array_ops._pad(tensor, paddings, name=name)
   if mode == "REFLECT":
@@ -1752,6 +1787,10 @@ ops.RegisterShape("Bitcast")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Reshape")
+def _DelegateReshapeShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_as_shapes_needed=[1])
+
+
 def _ReshapeShape(op):
   """Shape function for Reshape op."""
   input_shape = op.inputs[0].get_shape()
@@ -1969,9 +2008,13 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   Raises:
     TypeError: If either `hypothesis` or `truth` are not a `SparseTensor`.
   """
-  if not isinstance(hypothesis, (ops.SparseTensor, ops.SparseTensorValue)):
+  if not isinstance(
+      hypothesis, (sparse_tensor.SparseTensor,
+                   sparse_tensor.SparseTensorValue)):
     raise TypeError("Hypothesis must be a SparseTensor.")
-  if not isinstance(truth, (ops.SparseTensor, ops.SparseTensorValue)):
+  if not isinstance(
+      truth, (sparse_tensor.SparseTensor,
+              sparse_tensor.SparseTensorValue)):
     raise TypeError("Truth must be a SparseTensor.")
 
   return gen_array_ops._edit_distance(hypothesis.indices,
@@ -1989,18 +2032,8 @@ def _EditDistanceShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2, 5])
 
 
-@ops.RegisterShape("Quantize")
-@ops.RegisterShape("Dequantize")
-def _QuantizeDequantizeShape(op):
-  unused_min_range = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  unused_max_range = op.inputs[2].get_shape().merge_with(tensor_shape.scalar())
-  return common_shapes.unchanged_shape(op)
-
-
-@ops.RegisterShape("FakeQuantWithMinMaxArgs")
-def _FakeQuantWithMinMaxArgsShape(op):
-  """Shape function for FakeQuantWithMinMaxArgs op: preserve the input shape."""
-  return [op.inputs[0].get_shape()]
+ops.RegisterShape("Quantize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Dequantize")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxArgs")
@@ -2009,10 +2042,10 @@ def _FakeQuantWithMinMaxArgsGradient(op, grad):
   return fake_quant_with_min_max_args_gradient(grad, op.inputs[0])
 
 
-@ops.RegisterShape("FakeQuantWithMinMaxVars")
-def _FakeQuantWithMinMaxVarsShape(op):
-  """Shape function for FakeQuantWithMinMaxVars op: preserve the input shape."""
-  return [op.inputs[0].get_shape()]
+ops.RegisterShape("FakeQuantWithMinMaxArgs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVars")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannel")(
+    common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVars")
@@ -2020,12 +2053,6 @@ def _FakeQuantWithMinMaxVarsGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxVars op."""
   return fake_quant_with_min_max_vars_gradient(grad, op.inputs[0], op.inputs[1],
                                                op.inputs[2])
-
-
-@ops.RegisterShape("FakeQuantWithMinMaxVarsPerChannel")
-def _FakeQuantWithMinMaxVarsPerChannelShape(op):
-  """Shape function for FakeQuantWithMinMaxVarsPerChannel op: input shape."""
-  return [op.inputs[0].get_shape()]
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVarsPerChannel")
@@ -2451,6 +2478,55 @@ def squeeze(input, squeeze_dims=None, name=None):
   if np.isscalar(squeeze_dims):
     squeeze_dims = [squeeze_dims]
   return gen_array_ops._squeeze(input, squeeze_dims, name)
+
+
+def where(condition, x=None, y=None, name=None):
+  """Return the elements, either from `x` or `y`, depending on the `condition`.
+
+  If both `x` and `y` are None, then this operation returns the coordinates of
+  true elements of `condition`.  The coordinates are returned in a 2-D tensor
+  where the first dimension (rows) represents the number of true elements, and
+  the second dimension (columns) represents the coordinates of the true
+  elements. Keep in mind, the shape of the output tensor can vary depending on
+  how many true values there are in input. Indices are output in row-major
+  order.
+
+  If both non-None, `x` and `y` must have the same shape.
+  The `condition` tensor must be a scalar if `x` and `y` are scalar.
+  If `x` and `y` are vectors or higher rank, then `condition` must be either a
+  vector with size matching the first dimension of `x`, or must have the same
+  shape as `x`.
+
+  The `condition` tensor acts as a mask that chooses, based on the value at each
+  element, whether the corresponding element / row in the output should be taken
+  from `x` (if true) or `y` (if false).
+
+  If `condition` is a vector and `x` and `y` are higher rank matrices, then it
+  chooses which row (outer dimension) to copy from `x` and `y`. If `condition`
+  has the same shape as `x` and `y`, then it chooses which element to copy from
+  `x` and `y`.
+
+  Args:
+    condition: A `Tensor` of type `bool`
+    x: A Tensor which may have the same shape as `condition`. If `condition` is
+      rank 1, `x` may have higher rank, but its first dimension must match the
+      size of `condition`.
+    y: A `tensor` with the same shape and type as `x`.
+    name: A name of the operation (optional)
+
+  Returns:
+    A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
+    A `Tensor` with shape `(num_true, dim_size(condition))`.
+
+  Raises:
+    ValueError: When exactly one of `x` or `y` is non-None.
+  """
+  if x is None and y is None:
+    return gen_array_ops.where(input=condition, name=name)
+  elif x is not None and y is not None:
+    return gen_math_ops.select(condition=condition, t=x, e=y, name=name)
+  else:
+    raise ValueError("x and y must both be non-None or both be None.")
 
 
 @ops.RegisterShape("QuantizedReshape")

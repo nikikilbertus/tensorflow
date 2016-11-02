@@ -81,6 +81,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
     this.gc.lineWidth = 6;
     this.gc.textBaseline = 'middle';
+    this.gc.miterLimit = 2;
 
     // Have extra space between neighboring labels. Don't pack too tightly.
     const labelMargin = 2;
@@ -135,7 +136,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
   }
 
   onDataSet(dataSet: DataSet) {
-    this.labelsActive = (dataSet.metadataInfo.spriteImage == null);
+    this.labelsActive = (dataSet.spriteAndMetadataInfo.spriteImage == null);
     this.dataSet = dataSet;
   }
 

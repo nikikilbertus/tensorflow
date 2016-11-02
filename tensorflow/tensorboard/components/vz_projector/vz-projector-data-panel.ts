@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, ColumnStats, MetadataInfo} from './data';
+import {ColorOption, ColumnStats, SpriteAndMetadataInfo} from './data';
 import {ProjectorConfig, DataProvider, parseRawMetadata, parseRawTensors, EmbeddingInfo} from './data-provider';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
@@ -86,8 +86,9 @@ export class DataPanel extends DataPanelPolymer {
     return isSeparator ? 'separator' : null;
   }
 
-  metadataChanged(metadata: MetadataInfo, metadataFile: string) {
-    this.updateMetadataUI(metadata.stats, metadataFile);
+  metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo,
+      metadataFile: string) {
+    this.updateMetadataUI(spriteAndMetadata.stats, metadataFile);
   }
 
   private updateMetadataUI(columnStats: ColumnStats[], metadataFile: string) {
@@ -143,7 +144,9 @@ export class DataPanel extends DataPanelPolymer {
               }
               let desc = stats.tooManyUniqueValues ?
                   'gradient' :
-                  stats.uniqueEntries.length + ' colors';
+                  stats.uniqueEntries.length +
+                      ((stats.uniqueEntries.length > 20) ? ' non-unique' : '') +
+                      ' colors';
               return {name: stats.name, desc, map, items, thresholds};
             });
     if (metadataColorOption.length > 0) {
@@ -167,14 +170,10 @@ export class DataPanel extends DataPanelPolymer {
         this.selectedRun, this.selectedTensor, ds => {
       let metadataFile =
           this.getEmbeddingInfoByName(this.selectedTensor).metadataPath;
-      if (metadataFile) {
-        this.dataProvider.retrieveMetadata(
-            this.selectedRun, this.selectedTensor, metadata => {
-              this.projector.updateDataSet(ds, metadata, metadataFile);
-            });
-      } else {
-        this.projector.updateDataSet(ds);
-      }
+      this.dataProvider.retrieveSpriteAndMetadata(this.selectedRun,
+          this.selectedTensor, metadata => {
+        this.projector.updateDataSet(ds, metadata, metadataFile);
+      });
     });
     this.projector.setSelectedTensor(
         this.selectedRun, this.getEmbeddingInfoByName(this.selectedTensor));

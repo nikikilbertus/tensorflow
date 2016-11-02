@@ -19,10 +19,10 @@ module TF.Globals {
 
   // The names of TensorBoard tabs.
   export var TABS =
-      ['events', 'images', 'audio', 'graphs', 'distributions', 'histograms'];
+      ['scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms'];
 
   if (PROJECTOR_LAUNCHED) {
-    TABS.push('projections');
+    TABS.push('embeddings');
   }
 
   // If true, TensorBoard stores its hash in the URI state.

@@ -25,10 +25,11 @@ from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.session_bundle import exporter
+from tensorflow.python import summary
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
@@ -357,8 +358,8 @@ class _RegressionHead(_Head):
         loss_unweighted,
         _weight_tensor(features, self._weight_column_name),
         name=name)
-    logging_ops.scalar_summary(_head_prefixed(self._head_name, "loss"),
-                               weighted_average_loss)
+    summary.scalar(
+        _head_prefixed(self._head_name, "loss"), weighted_average_loss)
     return loss, centered_bias_step
 
   def _eval_op(self, features, labels, logits=None, logits_input=None,
@@ -501,8 +502,8 @@ class _MultiClassHead(_Head):
         loss_unweighted,
         _weight_tensor(features, self._weight_column_name),
         name=name)
-    logging_ops.scalar_summary(_head_prefixed(self._head_name, "loss"),
-                               weighted_average_loss)
+    summary.scalar(
+        _head_prefixed(self._head_name, "loss"), weighted_average_loss)
     return loss, centered_bias_step
 
   def _eval_op(self, features, labels, logits=None, logits_input=None,
@@ -603,7 +604,7 @@ class _MultiClassHead(_Head):
 
 def _check_labels(labels, label_name):
   labels = labels[label_name] if isinstance(labels, dict) else labels
-  if isinstance(labels, ops.SparseTensor):
+  if isinstance(labels, sparse_tensor.SparseTensor):
     raise ValueError("SparseTensor is not supported as labels.")
   return labels
 
@@ -728,9 +729,10 @@ def _centered_bias(logits_dimension, weight_collection):
       array_ops.zeros([logits_dimension]),
       collections=[weight_collection, ops.GraphKeys.VARIABLES],
       name="centered_bias_weight")
-  logging_ops.scalar_summary(
-      ["centered_bias_%d" % cb for cb in range(logits_dimension)],
-      array_ops.reshape(centered_bias, [-1]))
+
+  biases = array_ops.reshape(centered_bias, [-1])
+  for cb in range(logits_dimension):
+    summary.scalar("centered_bias_%d" % cb, biases[cb])
   return centered_bias
 
 
